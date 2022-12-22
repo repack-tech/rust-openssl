@@ -1513,7 +1513,7 @@ impl<'a> CrlStatus<'a> {
                 assert!(!revoked_entry.is_null());
                 CrlStatus::RemoveFromCrl(X509RevokedRef::from_ptr(revoked_entry))
             }
-            _ => unreachable!("X509_CRL_get0_by_{{serial,cert}} should only return 0, 1, or 2."),
+            _ => unreachable!("X509_CRL_get0_by should only return 0, 1, or 2."),
         }
     }
 }

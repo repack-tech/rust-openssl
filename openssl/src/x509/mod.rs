@@ -2000,7 +2000,7 @@ cfg_if! {
             X509_CRL_get_REVOKED,
             X509_REVOKED_get0_revocationDate, X509_REVOKED_get0_serialNumber,
         };
-    } else {
+    } else if #[cfg(not(boringssl))] {
         #[allow(bad_style)]
         unsafe fn X509_CRL_get0_lastUpdate(x: *const ffi::X509_CRL) -> *mut ffi::ASN1_TIME {
             (*(*x).crl).lastUpdate

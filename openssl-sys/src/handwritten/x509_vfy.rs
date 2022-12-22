@@ -12,6 +12,7 @@ extern "C" {
 extern "C" {
     pub fn X509_LOOKUP_free(ctx: *mut X509_LOOKUP);
     pub fn X509_LOOKUP_hash_dir() -> *mut X509_LOOKUP_METHOD;
+    pub fn X509_LOOKUP_file() -> *mut X509_LOOKUP_METHOD;
     pub fn X509_LOOKUP_ctrl(
         ctx: *mut X509_LOOKUP,
         cmd: c_int,
@@ -19,6 +20,7 @@ extern "C" {
         argl: c_long,
         ret: *mut *mut c_char,
     ) -> c_int;
+    pub fn X509_load_cert_file(ctx: *mut X509_LOOKUP, file: *const c_char, _type: c_int) -> c_int;
 }
 
 extern "C" {
@@ -117,4 +119,10 @@ extern "C" {
         ip: *const c_uchar,
         iplen: size_t,
     ) -> c_int;
+    #[cfg(ossl110)]
+    pub fn X509_VERIFY_PARAM_set_auth_level(param: *mut X509_VERIFY_PARAM, lvl: c_int);
+    #[cfg(ossl110)]
+    pub fn X509_VERIFY_PARAM_get_auth_level(param: *const X509_VERIFY_PARAM) -> c_int;
+    #[cfg(ossl102)]
+    pub fn X509_VERIFY_PARAM_set_purpose(param: *mut X509_VERIFY_PARAM, purpose: c_int) -> c_int;
 }

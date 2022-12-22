@@ -6,12 +6,18 @@ use crate::hash::MessageDigest;
 use crate::nid::Nid;
 use crate::pkey::{PKey, Private};
 use crate::rsa::Rsa;
+#[cfg(not(boringssl))]
+use crate::ssl::SslFiletype;
 use crate::stack::Stack;
 use crate::x509::extension::{
     AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName,
     SubjectKeyIdentifier,
 };
+#[cfg(not(boringssl))]
+use crate::x509::store::X509Lookup;
 use crate::x509::store::X509StoreBuilder;
+#[cfg(ossl102)]
+use crate::x509::verify::X509PurposeFlags;
 #[cfg(any(ossl102, libressl261))]
 use crate::x509::verify::{X509VerifyFlags, X509VerifyParam};
 #[cfg(ossl110)]
@@ -656,6 +662,7 @@ fn test_verify_param_set_depth() {
 
 #[test]
 #[cfg(any(ossl102, libressl261))]
+#[allow(clippy::bool_to_int_with_if)]
 fn test_verify_param_set_depth_fails_verification() {
     let cert = include_bytes!("../../test/leaf.pem");
     let cert = X509::from_pem(cert).unwrap();
@@ -693,4 +700,115 @@ fn test_verify_param_set_depth_fails_verification() {
             .error_string(),
         expected_error
     )
+}
+
+#[test]
+#[cfg(not(boringssl))]
+fn test_load_cert_file() {
+    let cert = include_bytes!("../../test/cert.pem");
+    let cert = X509::from_pem(cert).unwrap();
+    let chain = Stack::new().unwrap();
+
+    let mut store_bldr = X509StoreBuilder::new().unwrap();
+    let lookup = store_bldr.add_lookup(X509Lookup::file()).unwrap();
+    lookup
+        .load_cert_file("test/root-ca.pem", SslFiletype::PEM)
+        .unwrap();
+    let store = store_bldr.build();
+
+    let mut context = X509StoreContext::new().unwrap();
+    assert!(context
+        .init(&store, &cert, &chain, |c| c.verify_cert())
+        .unwrap());
+}
+
+#[test]
+#[cfg(ossl110)]
+fn test_verify_param_auth_level() {
+    let mut param = X509VerifyParam::new().unwrap();
+    let auth_lvl = 2;
+    let auth_lvl_default = -1;
+
+    assert_eq!(param.auth_level(), auth_lvl_default);
+
+    param.set_auth_level(auth_lvl);
+    assert_eq!(param.auth_level(), auth_lvl);
+}
+
+#[test]
+#[cfg(ossl102)]
+fn test_set_purpose() {
+    let cert = include_bytes!("../../test/leaf.pem");
+    let cert = X509::from_pem(cert).unwrap();
+    let intermediate_ca = include_bytes!("../../test/intermediate-ca.pem");
+    let intermediate_ca = X509::from_pem(intermediate_ca).unwrap();
+    let ca = include_bytes!("../../test/root-ca.pem");
+    let ca = X509::from_pem(ca).unwrap();
+    let mut chain = Stack::new().unwrap();
+    chain.push(intermediate_ca).unwrap();
+
+    let mut store_bldr = X509StoreBuilder::new().unwrap();
+    store_bldr.add_cert(ca).unwrap();
+    let mut verify_params = X509VerifyParam::new().unwrap();
+    verify_params.set_purpose(X509PurposeFlags::ANY).unwrap();
+    store_bldr.set_param(&verify_params).unwrap();
+    let store = store_bldr.build();
+    let mut context = X509StoreContext::new().unwrap();
+
+    assert!(context
+        .init(&store, &cert, &chain, |c| c.verify_cert())
+        .unwrap());
+}
+
+#[test]
+#[cfg(ossl102)]
+fn test_set_purpose_fails_verification() {
+    let cert = include_bytes!("../../test/leaf.pem");
+    let cert = X509::from_pem(cert).unwrap();
+    let intermediate_ca = include_bytes!("../../test/intermediate-ca.pem");
+    let intermediate_ca = X509::from_pem(intermediate_ca).unwrap();
+    let ca = include_bytes!("../../test/root-ca.pem");
+    let ca = X509::from_pem(ca).unwrap();
+    let mut chain = Stack::new().unwrap();
+    chain.push(intermediate_ca).unwrap();
+
+    let mut store_bldr = X509StoreBuilder::new().unwrap();
+    store_bldr.add_cert(ca).unwrap();
+    let mut verify_params = X509VerifyParam::new().unwrap();
+    verify_params
+        .set_purpose(X509PurposeFlags::TIMESTAMP_SIGN)
+        .unwrap();
+    store_bldr.set_param(&verify_params).unwrap();
+    let store = store_bldr.build();
+
+    let expected_error = "unsupported certificate purpose";
+    let mut context = X509StoreContext::new().unwrap();
+    assert_eq!(
+        context
+            .init(&store, &cert, &chain, |c| {
+                c.verify_cert()?;
+                Ok(c.error())
+            })
+            .unwrap()
+            .error_string(),
+        expected_error
+    )
+}
+
+#[test]
+#[cfg(any(ossl101, libressl350))]
+fn test_add_name_entry() {
+    let cert = include_bytes!("../../test/cert.pem");
+    let cert = X509::from_pem(cert).unwrap();
+    let inp_name = cert.subject_name().entries().next().unwrap();
+
+    let mut names = X509Name::builder().unwrap();
+    names.append_entry(inp_name).unwrap();
+    let names = names.build();
+
+    let mut entries = names.entries();
+    let outp_name = entries.next().unwrap();
+    assert_eq!(outp_name.object().nid(), inp_name.object().nid());
+    assert_eq!(outp_name.data().as_slice(), inp_name.data().as_slice());
+    assert!(entries.next().is_none());
 }

@@ -1544,6 +1544,7 @@ impl X509Crl {
     }
 }
 
+#[cfg(not(boringssl))]
 impl X509CrlRef {
     to_pem! {
         /// Serializes the certificate request to a PEM-encoded Certificate Revocation List.
